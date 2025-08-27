@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Viewer - Live Streaming</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-900 text-white min-h-screen">
+    <div class="container mx-auto px-4 py-6">
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-6">
+            <div class="flex items-center">
+                <a href="/" class="text-purple-400 hover:text-purple-300 mr-4">
+                    <i class="fas fa-arrow-left text-xl"></i>
+                </a>
+                <h1 class="text-2xl md:text-3xl font-bold">
+                    <i class="fas fa-users text-purple-400 mr-3"></i>Viewer
+                </h1>
+            </div>
+            <div id="connectionStatus" class="flex items-center">
+                <div class="w-3 h-3 rounded-full bg-red-500 mr-2 animate-pulse"></div>
+                <span class="text-sm">Disconnected</span>
+            </div>
+        </div>
+
+        <!-- Room Join -->
+        <div id="roomJoin" class="bg-gray-800 rounded-lg p-6 mb-6">
+            <h2 class="text-xl font-semibold mb-4">Join Stream</h2>
+            <div class="grid md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium mb-2">Room ID:</label>
+                    <input type="text" id="roomId" placeholder="Enter room ID to join" 
+                           class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:border-purple-500">
+                </div>
+                <div class="flex items-end">
+                    <button id="joinRoom" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">
+                        <i class="fas fa-sign-in-alt mr-2"></i>Join Stream
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Video Player -->
+        <div id="videoPlayer" class="bg-gray-800 rounded-lg p-6 mb-6 hidden">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-semibold">Live Stream</h2>
+                <div class="flex items-center space-x-4">
+                    <div id="streamStatus" class="bg-red-600 text-white px-3 py-1 rounded-full text-sm font-semibold">
+                        <i class="fas fa-circle mr-2"></i>Offline
+                    </div>
+                    <button id="leaveStream" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">
+                        <i class="fas fa-sign-out-alt mr-2"></i>Leave
+                    </button>
+                </div>
+            </div>
+            
+            <div class="relative">
+                <video id="remoteVideo" autoplay playsinline controls
+                       class="w-full max-w-4xl mx-auto rounded-lg bg-black">
+                    Your browser doesn't support video playback.
+                </video>
+                
+                <!-- Video Controls Overlay -->
+                <div id="videoControls" class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent p-4 rounded-b-lg">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-4">
+                            <button id="playPauseBtn" class="text-white hover:text-gray-300">
+                                <i class="fas fa-play text-xl"></i>
+                            </button>
+                            <div class="text-white text-sm">
+                                <span id="currentTime">00:00</span> / <span id="duration">00:00</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <button id="muteBtn" class="text-white hover:text-gray-300">
+                                <i class="fas fa-volume-up text-lg"></i>
+                            </button>
+                            <input type="range" id="volumeSlider" min="0" max="1" step="0.1" value="1" 
+                                   class="w-20 h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stream Info -->
+        <div id="streamInfo" class="bg-gray-800 rounded-lg p-6 mb-6 hidden">
+            <h2 class="text-xl font-semibold mb-4">Stream Information</h2>
+            <div class="grid md:grid-cols-3 gap-4 text-sm">
+                <div class="bg-gray-700 rounded-lg p-3">
+                    <div class="font-semibold text-purple-300">Room ID:</div>
+                    <div id="currentRoomId" class="text-gray-300">-</div>
+                </div>
+                <div class="bg-gray-700 rounded-lg p-3">
+                    <div class="font-semibold text-green-300">Stream Status:</div>
+                    <div id="streamStatusText" class="text-gray-300">Connecting...</div>
+                </div>
+                <div class="bg-gray-700 rounded-lg p-3">
+                    <div class="font-semibold text-blue-300">Connection:</div>
+                    <div id="connectionQuality" class="text-gray-300">Good</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chat Section -->
+        <div id="chatSection" class="bg-gray-800 rounded-lg p-6 hidden">
+            <h2 class="text-xl font-semibold mb-4">Live Chat</h2>
+            <div class="bg-gray-700 rounded-lg p-4 mb-4 h-64 overflow-y-auto">
+                <div id="chatMessages" class="space-y-2">
+                    <div class="text-gray-400 text-sm text-center">No messages yet</div>
+                </div>
+            </div>
+            <div class="flex space-x-2">
+                <input type="text" id="chatInput" placeholder="Type a message..." 
+                       class="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:border-purple-500">
+                <button id="sendMessage" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">
+                    <i class="fas fa-paper-plane"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Error Messages -->
+        <div id="errorContainer" class="hidden">
+            <div class="bg-red-900 border border-red-700 text-red-200 px-4 py-3 rounded-lg mb-4">
+                <div class="flex items-center">
+                    <i class="fas fa-exclamation-triangle mr-2"></i>
+                    <span id="errorMessage"></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading Overlay -->
+        <div id="loadingOverlay" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+            <div class="bg-gray-800 rounded-lg p-6 text-center">
+                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mx-auto mb-4"></div>
+                <p id="loadingText">Connecting to stream...</p>
+            </div>
+        </div>
+
+        <!-- No Stream Message -->
+        <div id="noStreamMessage" class="hidden">
+            <div class="text-center py-12">
+                <i class="fas fa-video-slash text-6xl text-gray-600 mb-4"></i>
+                <h3 class="text-xl font-semibold mb-2">No Active Stream</h3>
+                <p class="text-gray-400">The stream you're trying to join is not currently active.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let socket;
+        let currentRoomId = null;
+        let isPlaying = false;
+
+        // DOM elements
+        const elements = {
+            connectionStatus: document.getElementById('connectionStatus'),
+            roomJoin: document.getElementById('roomJoin'),
+            videoPlayer: document.getElementById('videoPlayer'),
+            streamInfo: document.getElementById('streamInfo'),
+            chatSection: document.getElementById('chatSection'),
+            roomId: document.getElementById('roomId'),
+            joinRoom: document.getElementById('joinRoom'),
+            remoteVideo: document.getElementById('remoteVideo'),
+            streamStatus: document.getElementById('streamStatus'),
+            leaveStream: document.getElementById('leaveStream'),
+            currentRoomId: document.getElementById('currentRoomId'),
+            streamStatusText: document.getElementById('streamStatusText'),
+            connectionQuality: document.getElementById('connectionQuality'),
+            chatMessages: document.getElementById('chatMessages'),
+            chatInput: document.getElementById('chatInput'),
+            sendMessage: document.getElementById('sendMessage'),
+            playPauseBtn: document.getElementById('playPauseBtn'),
+            muteBtn: document.getElementById('muteBtn'),
+            volumeSlider: document.getElementById('volumeSlider'),
+            currentTime: document.getElementById('currentTime'),
+            duration: document.getElementById('duration'),
+            errorContainer: document.getElementById('errorContainer'),
+            errorMessage: document.getElementById('errorMessage'),
+            loadingOverlay: document.getElementById('loadingOverlay'),
+            loadingText: document.getElementById('loadingText'),
+            noStreamMessage: document.getElementById('noStreamMessage')
+        };
+
+        // Initialize Socket.IO
+        function initializeSocket() {
+            socket = io();
+            
+            socket.on('connect', () => {
+                updateConnectionStatus(true);
+                hideError();
+            });
+
+            socket.on('disconnect', () => {
+                updateConnectionStatus(false);
+                showError('Connection lost. Trying to reconnect...');
+            });
+
+            socket.on('viewer-joined', (roomId) => {
+                currentRoomId = roomId;
+                elements.currentRoomId.textContent = roomId;
+                elements.roomJoin.classList.add('hidden');
+                elements.videoPlayer.classList.remove('hidden');
+                elements.streamInfo.classList.remove('hidden');
+                elements.chatSection.classList.remove('hidden');
+                hideLoading();
+                hideError();
+                initializeVideoPlayer();
+            });
+
+            socket.on('stream-started', (roomId) => {
+                elements.streamStatus.innerHTML = '<i class="fas fa-circle mr-2"></i>Live';
+                elements.streamStatus.className = 'bg-green-600 text-white px-3 py-1 rounded-full text-sm font-semibold';
+                elements.streamStatusText.textContent = 'Live';
+                elements.noStreamMessage.classList.add('hidden');
+            });
+
+            socket.on('stream-stopped', (roomId) => {
+                elements.streamStatus.innerHTML = '<i class="fas fa-circle mr-2"></i>Ended';
+                elements.streamStatus.className = 'bg-red-600 text-white px-3 py-1 rounded-full text-sm font-semibold';
+                elements.streamStatusText.textContent = 'Ended';
+            });
+
+            socket.on('publisher-disconnected', () => {
+                elements.streamStatus.innerHTML = '<i class="fas fa-circle mr-2"></i>Disconnected';
+                elements.streamStatus.className = 'bg-red-600 text-white px-3 py-1 rounded-full text-sm font-semibold';
+                elements.streamStatusText.textContent = 'Publisher Disconnected';
+                elements.noStreamMessage.classList.remove('hidden');
+            });
+
+            socket.on('webrtc-offer', (data) => {
+                handleWebRTCOffer(data);
+            });
+
+            socket.on('webrtc-answer', (data) => {
+                handleWebRTCAnswer(data);
+            });
+
+            socket.on('ice-candidate', (data) => {
+                handleICECandidate(data);
+            });
+
+            socket.on('error', (message) => {
+                showError(message);
+                hideLoading();
+            });
+        }
+
+        // Update connection status
+        function updateConnectionStatus(connected) {
+            const statusDot = elements.connectionStatus.querySelector('div');
+            const statusText = elements.connectionStatus.querySelector('span');
+            
+            if (connected) {
+                statusDot.className = 'w-3 h-3 rounded-full bg-green-500 mr-2';
+                statusText.textContent = 'Connected';
+            } else {
+                statusDot.className = 'w-3 h-3 rounded-full bg-red-500 mr-2 animate-pulse';
+                statusText.textContent = 'Disconnected';
+            }
+        }
+
+        // Show/hide error messages
+        function showError(message) {
+            elements.errorMessage.textContent = message;
+            elements.errorContainer.classList.remove('hidden');
+        }
+
+        function hideError() {
+            elements.errorContainer.classList.add('hidden');
+        }
+
+        // Show/hide loading overlay
+        function showLoading(text = 'Loading...') {
+            elements.loadingText.textContent = text;
+            elements.loadingOverlay.classList.remove('hidden');
+        }
+
+        function hideLoading() {
+            elements.loadingOverlay.classList.add('hidden');
+        }
+
+        // Initialize video player
+        function initializeVideoPlayer() {
+            try {
+                // Set up WebRTC for receiving video stream
+                const pc = new RTCPeerConnection({
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' }
+                    ]
+                });
+
+                // Handle incoming video stream
+                pc.ontrack = (event) => {
+                    console.log('Received remote stream');
+                    elements.remoteVideo.srcObject = event.streams[0];
+                    elements.remoteVideo.style.display = 'block';
+                    
+                    // Remove placeholder if it exists
+                    const placeholder = elements.remoteVideo.parentNode.querySelector('.bg-gray-800');
+                    if (placeholder) {
+                        placeholder.remove();
+                    }
+                    
+                    // Update status
+                    elements.streamStatusText.textContent = 'Live Stream Active';
+                    elements.connectionQuality.textContent = 'Connected';
+                };
+
+                // Handle ICE candidates
+                pc.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        socket.emit('ice-candidate', {
+                            roomId: currentRoomId,
+                            candidate: event.candidate
+                        });
+                    }
+                };
+
+                // Handle connection state changes
+                pc.onconnectionstatechange = () => {
+                    console.log('Connection state:', pc.connectionState);
+                    if (pc.connectionState === 'connected') {
+                        elements.connectionQuality.textContent = 'Connected';
+                    } else if (pc.connectionState === 'disconnected') {
+                        elements.connectionQuality.textContent = 'Disconnected';
+                    }
+                };
+
+                // Store peer connection
+                window.peerConnection = pc;
+
+                // Video controls
+                elements.playPauseBtn.addEventListener('click', togglePlayPause);
+                elements.muteBtn.addEventListener('click', toggleMute);
+                elements.volumeSlider.addEventListener('input', updateVolume);
+                elements.remoteVideo.addEventListener('timeupdate', updateTimeDisplay);
+
+            } catch (error) {
+                showError('Failed to initialize video player: ' + error.message);
+            }
+        }
+
+        // Handle WebRTC offer from publisher
+        async function handleWebRTCOffer(data) {
+            try {
+                console.log('Received WebRTC offer from publisher');
+                
+                const pc = window.peerConnection;
+                if (!pc) {
+                    console.error('No peer connection available');
+                    return;
+                }
+
+                // Set remote description
+                await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+
+                // Create answer
+                const answer = await pc.createAnswer();
+                await pc.setLocalDescription(answer);
+
+                // Send answer back to publisher
+                socket.emit('webrtc-answer', {
+                    roomId: currentRoomId,
+                    answer: answer
+                });
+
+                // Update stream status
+                elements.streamStatusText.textContent = 'Connecting to Stream';
+                elements.connectionQuality.textContent = 'Establishing Connection';
+            } catch (error) {
+                console.error('Error handling WebRTC offer:', error);
+                showError('Failed to connect to stream: ' + error.message);
+            }
+        }
+
+        // Handle WebRTC answer (not used by viewer, but needed for completeness)
+        function handleWebRTCAnswer(data) {
+            console.log('Received WebRTC answer (viewer)');
+        }
+
+        // Handle ICE candidates
+        async function handleICECandidate(data) {
+            try {
+                const pc = window.peerConnection;
+                if (!pc) {
+                    console.error('No peer connection available');
+                    return;
+                }
+
+                if (data.candidate) {
+                    await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+                }
+            } catch (error) {
+                console.error('Error handling ICE candidate:', error);
+            }
+        }
+
+        // Video controls
+        function togglePlayPause() {
+            if (elements.remoteVideo.paused) {
+                elements.remoteVideo.play();
+                elements.playPauseBtn.innerHTML = '<i class="fas fa-pause text-xl"></i>';
+                isPlaying = true;
+            } else {
+                elements.remoteVideo.pause();
+                elements.playPauseBtn.innerHTML = '<i class="fas fa-play text-xl"></i>';
+                isPlaying = false;
+            }
+        }
+
+        function toggleMute() {
+            elements.remoteVideo.muted = !elements.remoteVideo.muted;
+            if (elements.remoteVideo.muted) {
+                elements.muteBtn.innerHTML = '<i class="fas fa-volume-mute text-lg"></i>';
+            } else {
+                elements.muteBtn.innerHTML = '<i class="fas fa-volume-up text-lg"></i>';
+            }
+        }
+
+        function updateVolume() {
+            elements.remoteVideo.volume = elements.volumeSlider.value;
+        }
+
+        function updateTimeDisplay() {
+            const current = Math.floor(elements.remoteVideo.currentTime);
+            const duration = Math.floor(elements.remoteVideo.duration) || 0;
+            
+            elements.currentTime.textContent = formatTime(current);
+            elements.duration.textContent = formatTime(duration);
+        }
+
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        // Chat functionality
+        function addChatMessage(message, sender = 'System') {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'flex items-start space-x-2';
+            messageDiv.innerHTML = `
+                <div class="flex-shrink-0">
+                    <div class="w-8 h-8 bg-purple-600 rounded-full flex items-center justify-center text-xs font-bold">
+                        ${sender.charAt(0).toUpperCase()}
+                    </div>
+                </div>
+                <div class="flex-1">
+                    <div class="text-sm font-semibold text-purple-300">${sender}</div>
+                    <div class="text-sm text-gray-300">${message}</div>
+                </div>
+            `;
+            
+            elements.chatMessages.appendChild(messageDiv);
+            elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+        }
+
+        // Event listeners
+        elements.joinRoom.addEventListener('click', () => {
+            const roomId = elements.roomId.value.trim();
+            if (!roomId) {
+                showError('Please enter a room ID');
+                return;
+            }
+            
+            showLoading('Joining stream...');
+            socket.emit('join-as-viewer', roomId);
+        });
+
+        elements.leaveStream.addEventListener('click', () => {
+            if (currentRoomId) {
+                socket.emit('leave-room', currentRoomId);
+            }
+            
+            elements.roomJoin.classList.remove('hidden');
+            elements.videoPlayer.classList.add('hidden');
+            elements.streamInfo.classList.add('hidden');
+            elements.chatSection.classList.add('hidden');
+            
+            currentRoomId = null;
+            
+            // Clean up video
+            if (elements.remoteVideo.src) {
+                URL.revokeObjectURL(elements.remoteVideo.src);
+                elements.remoteVideo.src = '';
+            }
+        });
+
+        elements.sendMessage.addEventListener('click', () => {
+            const message = elements.chatInput.value.trim();
+            if (message) {
+                addChatMessage(message, 'You');
+                elements.chatInput.value = '';
+                // In a real app, you'd send this to the server
+            }
+        });
+
+        elements.chatInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                elements.sendMessage.click();
+            }
+        });
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            initializeSocket();
+            addChatMessage('Welcome to the live stream!', 'System');
+        });
+    </script>
+</body>
+</html>
